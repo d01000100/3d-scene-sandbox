@@ -145,6 +145,48 @@
     #btn-regenerate:hover {
       background: #c62e3b;
     }
+
+    /* Palette selector */
+    #cfg-palette {
+      width: 100%;
+      padding: 6px 8px;
+      background: #222;
+      color: #eee;
+      border: 1px solid #444;
+      border-radius: 4px;
+      font: 13px/1.4 'SF Mono', 'Fira Code', monospace;
+      margin-bottom: 10px;
+    }
+
+    /* Pause button */
+    #btn-pause {
+      width: 100%;
+      padding: 10px;
+      margin-top: 8px;
+      background: #264653;
+      color: #fff;
+      border: none;
+      border-radius: 4px;
+      font: bold 13px/1 'SF Mono', 'Fira Code', monospace;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    #btn-pause:hover {
+      background: #1d3640;
+    }
+
+    /* Color swatches preview */
+    .palette-preview {
+      display: flex;
+      gap: 3px;
+      margin-top: 6px;
+      margin-bottom: 10px;
+    }
+    .palette-preview .swatch {
+      width: 16px;
+      height: 16px;
+      border-radius: 2px;
+    }
   </style>
 </head>
 <body>
@@ -203,7 +245,19 @@
     <span class="value-display" id="val-speed">0.03</span>
   </div>
 
+  <h3>Palette</h3>
+
+  <select id="cfg-palette">
+    <option value="mondrian" selected>Mondrian / De Stijl</option>
+    <option value="pastel">Pastel</option>
+    <option value="monochrome">Monochrome</option>
+    <option value="neon">Neon</option>
+    <option value="earth">Earth Tones</option>
+  </select>
+  <div class="palette-preview" id="palette-preview"></div>
+
   <button id="btn-regenerate">Regenerate</button>
+  <button id="btn-pause">Pause</button>
 </div>
 
 <script type="module">
@@ -437,8 +491,44 @@
   //   mesh.userData.spinAxis = 'x', 'y', or 'z' (random)
   //   mesh.userData.spinSpeed = rotation speed in radians per frame
 
-  // Add rotation speed to CONFIG
+  // ============================================================
+  //  STEP 5 — PALETTE PRESETS
+  // ============================================================
+  //
+  //  Each palette is an array of hex color strings.
+  //  Switching palettes swaps CONFIG.palette and regenerates the scene.
+
+  const PALETTES = {
+    mondrian: [
+      '#e63946', '#f4a261', '#e9c46a', '#2a9d8f', '#264653',
+      '#f1faee', '#000000', '#457b9d', '#d62828', '#f77f00',
+      '#003049', '#fcbf49', '#006d32', '#d64f8e',
+    ],
+    pastel: [
+      '#ffd6e0', '#ffdfba', '#ffffba', '#baffc9', '#bae1ff',
+      '#e8d5f5', '#f0e6ef', '#d4f0f0', '#fcf5c7', '#f5c7c7',
+      '#c7f5e3', '#d0d0ff',
+    ],
+    monochrome: [
+      '#ffffff', '#e0e0e0', '#c0c0c0', '#a0a0a0', '#808080',
+      '#606060', '#404040', '#202020', '#000000', '#f5f5f5',
+      '#d0d0d0', '#b0b0b0',
+    ],
+    neon: [
+      '#ff006e', '#fb5607', '#ffbe0b', '#8338ec', '#3a86ff',
+      '#06d6a0', '#ff4cc9', '#00f5d4', '#fee440', '#f15bb5',
+      '#00bbf9', '#9b5de5',
+    ],
+    earth: [
+      '#6b4226', '#8b5e3c', '#a67b5b', '#c4a882', '#dbc1ac',
+      '#4a7c59', '#6b8f71', '#8fbc8f', '#d2b48c', '#f5deb3',
+      '#c8a96e', '#483c32',
+    ],
+  };
+
+  // Animation state
   CONFIG.rotationSpeed = 0.03;  // radians per frame (~1.7 degrees)
+  let paused = false;           // pause/resume flag
 
   function onPointerDown(event) {
     // --- Convert pixel coordinates to NDC ---
@@ -500,23 +590,43 @@
   function animate() {
     requestAnimationFrame(animate);
 
-    // --- Animate spinning blocks ---
-    if (blocksGroup) {
+    // --- Animate spinning blocks (skip if paused) ---
+    if (!paused && blocksGroup) {
       blocksGroup.children.forEach((mesh) => {
         if (mesh.userData.spinning) {
-          // mesh.rotation[axis] += speed
-          // e.g., mesh.rotation.y += 0.03
           const axis = mesh.userData.spinAxis;
           mesh.rotation[axis] += mesh.userData.spinSpeed;
         }
       });
     }
 
+    // Always render (even when paused) so the scene is visible
     renderer.render(scene, camera);
   }
 
   // Kick off the loop!
   animate();
+
+  // ============================================================
+  //  STEP 5 — WINDOW RESIZE HANDLING
+  // ============================================================
+  //
+  //  When the browser window is resized, we must update TWO things:
+  //    1. The renderer's pixel dimensions
+  //    2. The camera's aspect ratio
+  //
+  //  Without this, the scene would stretch or crop incorrectly.
+  //  We also call camera.updateProjectionMatrix() — this recalculates
+  //  the internal math that converts 3D → 2D based on the new aspect ratio.
+
+  window.addEventListener('resize', () => {
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+
+    renderer.setSize(w, h);
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+  });
 
   // ============================================================
   //  STEP 4 — WIRING THE CONFIG PANEL TO THREE.JS
@@ -573,6 +683,45 @@
   document.getElementById('btn-regenerate').addEventListener('click', () => {
     generateBlocks();
   });
+
+  // --- Pause / Resume button ---
+  const btnPause = document.getElementById('btn-pause');
+  btnPause.addEventListener('click', () => {
+    paused = !paused;
+    btnPause.textContent = paused ? 'Resume' : 'Pause';
+  });
+
+  // ============================================================
+  //  STEP 5 — PALETTE SELECTOR WIRING
+  // ============================================================
+  //
+  //  When the user picks a new palette from the dropdown:
+  //    1. Swap CONFIG.palette to the selected preset
+  //    2. Update the color swatches preview
+  //    3. Regenerate the scene with the new colors
+
+  const paletteSelect = document.getElementById('cfg-palette');
+  const palettePreview = document.getElementById('palette-preview');
+
+  // Render color swatches for the current palette
+  function updatePalettePreview() {
+    palettePreview.innerHTML = '';
+    CONFIG.palette.forEach((color) => {
+      const swatch = document.createElement('div');
+      swatch.className = 'swatch';
+      swatch.style.background = color;
+      palettePreview.appendChild(swatch);
+    });
+  }
+
+  paletteSelect.addEventListener('change', () => {
+    CONFIG.palette = PALETTES[paletteSelect.value];
+    updatePalettePreview();
+    generateBlocks();
+  });
+
+  // Show initial palette swatches
+  updatePalettePreview();
 
   // Prevent clicks on the panel from triggering raycasting on the scene.
   // Without this, clicking a slider would also try to rotate a block behind it.
