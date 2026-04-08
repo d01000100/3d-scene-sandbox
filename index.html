@@ -43,9 +43,168 @@
     canvas {
       display: block;              /* Removes the inline gap below canvas */
     }
+
+    /* ============================================================
+       STEP 4 — CONFIG PANEL STYLES
+       ============================================================
+       The panel is a fixed-position HTML overlay on top of the canvas.
+       It slides in/out from the right edge. The toggle button is always
+       visible so you can show/hide the panel.
+    */
+
+    /* Toggle button — always visible in the top-right corner */
+    #panel-toggle {
+      position: fixed;
+      top: 16px;
+      right: 16px;
+      z-index: 100;
+      background: rgba(0, 0, 0, 0.7);
+      color: #fff;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      padding: 8px 16px;
+      font: 13px/1 'SF Mono', 'Fira Code', monospace;
+      cursor: pointer;
+      border-radius: 4px;
+      transition: background 0.2s;
+    }
+    #panel-toggle:hover {
+      background: rgba(0, 0, 0, 0.9);
+    }
+
+    /* The panel itself — slides in from the right */
+    #config-panel {
+      position: fixed;
+      top: 0;
+      right: 0;
+      width: 300px;
+      height: 100vh;
+      background: rgba(10, 10, 10, 0.92);
+      backdrop-filter: blur(10px);
+      color: #eee;
+      font: 13px/1.6 'SF Mono', 'Fira Code', monospace;
+      padding: 60px 20px 20px;
+      overflow-y: auto;
+      z-index: 90;
+      transform: translateX(100%);        /* Hidden off-screen by default */
+      transition: transform 0.3s ease;
+    }
+    #config-panel.open {
+      transform: translateX(0);            /* Slides in when .open class added */
+    }
+
+    /* Section headers inside the panel */
+    #config-panel h3 {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      color: #888;
+      margin: 20px 0 10px;
+      border-bottom: 1px solid #333;
+      padding-bottom: 6px;
+    }
+    #config-panel h3:first-child {
+      margin-top: 0;
+    }
+
+    /* Each control row: label + input side by side */
+    .control-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+    .control-row label {
+      flex: 0 0 auto;
+      margin-right: 12px;
+      color: #aaa;
+    }
+    .control-row input[type="range"] {
+      flex: 1;
+      accent-color: #e63946;
+    }
+    .control-row .value-display {
+      flex: 0 0 36px;
+      text-align: right;
+      color: #fff;
+      font-size: 12px;
+    }
+
+    /* Regenerate button */
+    #btn-regenerate {
+      width: 100%;
+      padding: 10px;
+      margin-top: 16px;
+      background: #e63946;
+      color: #fff;
+      border: none;
+      border-radius: 4px;
+      font: bold 13px/1 'SF Mono', 'Fira Code', monospace;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    #btn-regenerate:hover {
+      background: #c62e3b;
+    }
   </style>
 </head>
 <body>
+
+<!--
+  ============================================================
+  STEP 4 — CONFIG PANEL HTML
+  ============================================================
+  This is plain HTML overlaid on top of the Three.js canvas.
+  Each input is wired to CONFIG values via JavaScript below.
+  The panel starts hidden (no .open class) and slides in when toggled.
+-->
+
+<button id="panel-toggle">Config</button>
+
+<div id="config-panel">
+  <h3>Grid Layout</h3>
+
+  <div class="control-row">
+    <label>Rows</label>
+    <input type="range" id="cfg-rows" min="2" max="20" step="1" value="8" />
+    <span class="value-display" id="val-rows">8</span>
+  </div>
+
+  <div class="control-row">
+    <label>Cols</label>
+    <input type="range" id="cfg-cols" min="2" max="20" step="1" value="10" />
+    <span class="value-display" id="val-cols">10</span>
+  </div>
+
+  <div class="control-row">
+    <label>Gap</label>
+    <input type="range" id="cfg-gap" min="0" max="1" step="0.05" value="0.15" />
+    <span class="value-display" id="val-gap">0.15</span>
+  </div>
+
+  <h3>Block Size</h3>
+
+  <div class="control-row">
+    <label>Max Height</label>
+    <input type="range" id="cfg-maxHeight" min="1" max="15" step="0.5" value="6" />
+    <span class="value-display" id="val-maxHeight">6</span>
+  </div>
+
+  <div class="control-row">
+    <label>Max Width</label>
+    <input type="range" id="cfg-maxWidth" min="0.5" max="5" step="0.25" value="2.5" />
+    <span class="value-display" id="val-maxWidth">2.5</span>
+  </div>
+
+  <h3>Animation</h3>
+
+  <div class="control-row">
+    <label>Spin Speed</label>
+    <input type="range" id="cfg-speed" min="0.005" max="0.15" step="0.005" value="0.03" />
+    <span class="value-display" id="val-speed">0.03</span>
+  </div>
+
+  <button id="btn-regenerate">Regenerate</button>
+</div>
 
 <script type="module">
   // ============================================================
@@ -358,6 +517,67 @@
 
   // Kick off the loop!
   animate();
+
+  // ============================================================
+  //  STEP 4 — WIRING THE CONFIG PANEL TO THREE.JS
+  // ============================================================
+  //
+  //  The panel is plain HTML. We connect it to our CONFIG object
+  //  with standard DOM event listeners. When the user moves a slider:
+  //    1. Update CONFIG with the new value
+  //    2. Update the displayed value text
+  //    3. For some settings, regenerate the scene immediately
+  //
+  //  This is the simplest pattern for connecting UI to 3D state.
+  //  Libraries like dat.gui or lil-gui automate this, but understanding
+  //  the manual version first is more educational.
+
+  // --- Panel toggle ---
+  const panelToggle = document.getElementById('panel-toggle');
+  const configPanel = document.getElementById('config-panel');
+
+  panelToggle.addEventListener('click', () => {
+    configPanel.classList.toggle('open');
+    panelToggle.textContent = configPanel.classList.contains('open')
+      ? 'Close'
+      : 'Config';
+  });
+
+  // --- Helper: wire a slider to CONFIG ---
+  // This reduces boilerplate. For each slider, we:
+  //   - Listen for 'input' events (fires continuously while dragging)
+  //   - Parse the value as a float
+  //   - Call a setter function to update CONFIG
+  //   - Update the display span
+  function wireSlider(sliderId, displayId, setter) {
+    const slider = document.getElementById(sliderId);
+    const display = document.getElementById(displayId);
+
+    slider.addEventListener('input', () => {
+      const value = parseFloat(slider.value);
+      display.textContent = value;
+      setter(value);
+    });
+  }
+
+  // Wire each slider to its CONFIG property.
+  // Grid sliders don't auto-regenerate — you click "Regenerate" for those.
+  wireSlider('cfg-rows',      'val-rows',      (v) => { CONFIG.rows = v; });
+  wireSlider('cfg-cols',      'val-cols',      (v) => { CONFIG.cols = v; });
+  wireSlider('cfg-gap',       'val-gap',       (v) => { CONFIG.gap = v; });
+  wireSlider('cfg-maxHeight', 'val-maxHeight', (v) => { CONFIG.blockHeight.max = v; });
+  wireSlider('cfg-maxWidth',  'val-maxWidth',  (v) => { CONFIG.blockWidth.max = v; CONFIG.blockDepth.max = v; });
+  wireSlider('cfg-speed',     'val-speed',     (v) => { CONFIG.rotationSpeed = v; });
+
+  // --- Regenerate button ---
+  document.getElementById('btn-regenerate').addEventListener('click', () => {
+    generateBlocks();
+  });
+
+  // Prevent clicks on the panel from triggering raycasting on the scene.
+  // Without this, clicking a slider would also try to rotate a block behind it.
+  configPanel.addEventListener('pointerdown', (e) => e.stopPropagation());
+  panelToggle.addEventListener('pointerdown', (e) => e.stopPropagation());
 
 </script>
 
