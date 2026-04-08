@@ -16,10 +16,20 @@
     The "import map" below lets us write `import * as THREE from 'three'`
     just like a real project would, even without a bundler.
   -->
+  <!--
+    The import map now includes TWO entries:
+      - "three"         → the core library (Scene, Camera, Mesh, etc.)
+      - "three/addons/" → extra utilities that ship with Three.js but aren't
+                          part of the core build. OrbitControls lives here.
+
+    Three.js separates these because not every project needs controls, loaders,
+    post-processing, etc. You only import what you use, keeping bundle size small.
+  -->
   <script type="importmap">
     {
       "imports": {
-        "three": "https://unpkg.com/three@0.170.0/build/three.module.js"
+        "three": "https://unpkg.com/three@0.170.0/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.170.0/examples/jsm/"
       }
     }
   </script>
@@ -272,6 +282,7 @@
   //              and projects it onto the screen (our <canvas>)
 
   import * as THREE from 'three';
+  import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
   // ----- 1. SCENE -----
   // The scene is just a container. You add objects to it, and the
@@ -329,6 +340,57 @@
 
   // The renderer creates a <canvas> element. We add it to the page.
   document.body.appendChild(renderer.domElement);
+
+  // ============================================================
+  //  STEP 6 — ORBIT CONTROLS (Right-Click Drag)
+  // ============================================================
+  //
+  //  OrbitControls is a Three.js "addon" — a pre-built utility that
+  //  handles camera orbiting, panning, and zooming via mouse/touch.
+  //
+  //  By default, OrbitControls maps:
+  //    Left click   → orbit (rotate around target)
+  //    Right click  → pan (slide sideways)
+  //    Scroll wheel → zoom (dolly in/out)
+  //
+  //  But we already use left-click for raycasting (clicking blocks).
+  //  So we REMAP the buttons:
+  //    Left click   → nothing (free for our raycaster)
+  //    Right click  → orbit
+  //    Middle click → pan
+  //    Scroll       → zoom (unchanged)
+  //
+  //  THREE.MOUSE is an enum: { LEFT: 0, MIDDLE: 1, RIGHT: 2 }
+  //  The controls read .mouseButtons to decide what each button does.
+
+  const controls = new OrbitControls(camera, renderer.domElement);
+
+  // Remap: right-click = orbit, middle = pan, left = disabled
+  controls.mouseButtons = {
+    LEFT:   null,                  // Don't let OrbitControls capture left click
+    MIDDLE: THREE.MOUSE.PAN,       // Middle-click drag → pan
+    RIGHT:  THREE.MOUSE.ROTATE,    // Right-click drag → orbit
+  };
+
+  // The "target" is the point the camera orbits around and looks at.
+  // We set it to the origin (center of our grid).
+  controls.target.set(0, 0, 0);
+
+  // Enable damping (inertia) — the camera continues to drift slightly
+  // after you release the mouse, which feels much smoother.
+  // When enabled, you MUST call controls.update() in the animation loop.
+  controls.enableDamping = true;
+  controls.dampingFactor = 0.08;
+
+  // Limit how far the camera can zoom in/out, and how far it can tilt.
+  // This prevents the user from zooming through the floor or flipping upside down.
+  controls.minDistance = 5;       // Can't zoom closer than 5 units
+  controls.maxDistance = 60;      // Can't zoom farther than 60 units
+  controls.maxPolarAngle = Math.PI / 2.1;  // Can't go below the ground plane
+
+  // Suppress the browser's right-click context menu on the canvas.
+  // Without this, right-click drag would pop open "Copy / Paste / Inspect".
+  renderer.domElement.addEventListener('contextmenu', (e) => e.preventDefault());
 
   // ============================================================
   //  STEP 2 — CONFIGURATION OBJECT
@@ -531,6 +593,11 @@
   let paused = false;           // pause/resume flag
 
   function onPointerDown(event) {
+    // --- Only raycast on LEFT click (button 0) ---
+    // Right-click (button 2) is now handled by OrbitControls for camera orbit.
+    // event.button values: 0 = left, 1 = middle, 2 = right
+    if (event.button !== 0) return;
+
     // --- Convert pixel coordinates to NDC ---
     //
     // Screen pixels:  (0,0) = top-left,  (width, height) = bottom-right
@@ -599,6 +666,10 @@
         }
       });
     }
+
+    // Update OrbitControls — required every frame when damping is enabled.
+    // This is what makes the camera drift smoothly after releasing the mouse.
+    controls.update();
 
     // Always render (even when paused) so the scene is visible
     renderer.render(scene, camera);
