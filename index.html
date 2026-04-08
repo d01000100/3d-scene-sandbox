@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Opus — Generative 3D Blocks</title>
+
+  <!--
+    ============================================================
+    THREE.JS — LOADED FROM CDN
+    ============================================================
+    Three.js is a JavaScript library that wraps WebGL (the browser's
+    low-level 3D API) into a friendly, high-level interface.
+
+    We load it from a CDN so there's nothing to install.
+    The "import map" below lets us write `import * as THREE from 'three'`
+    just like a real project would, even without a bundler.
+  -->
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.170.0/build/three.module.js"
+      }
+    }
+  </script>
+
+  <style>
+    /*
+      Full-screen canvas with no scrollbars.
+      The canvas will be the ENTIRE page — like the Opus reference.
+    */
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      overflow: hidden;            /* No scrollbars */
+      background: #1a1a1a;        /* Dark fallback while scene loads */
+    }
+
+    canvas {
+      display: block;              /* Removes the inline gap below canvas */
+    }
+  </style>
+</head>
+<body>
+
+<script type="module">
+  // ============================================================
+  //  STEP 1 — THE THREE PILLARS: Scene, Camera, Renderer
+  // ============================================================
+  //
+  //  Think of it like a film set:
+  //    Scene    = the stage where you place objects
+  //    Camera   = where the audience sits
+  //    Renderer = the film crew that captures what the camera sees
+  //              and projects it onto the screen (our <canvas>)
+
+  import * as THREE from 'three';
+
+  // ----- 1. SCENE -----
+  // The scene is just a container. You add objects to it, and the
+  // renderer will draw whatever is inside.
+  const scene = new THREE.Scene();
+
+  // Set a background color. This is what you see where there are no objects.
+  // THREE.Color accepts hex strings, CSS color names, or RGB values.
+  scene.background = new THREE.Color('#1a1a1a');
+
+  // ----- 2. CAMERA -----
+  // PerspectiveCamera mimics how human eyes work:
+  //   - Objects farther away appear smaller
+  //   - It has a "field of view" (FOV) angle
+  //
+  // Constructor: PerspectiveCamera(fov, aspect, near, far)
+  //   fov    = vertical field of view in degrees (60-75 is natural)
+  //   aspect = width / height of the viewport
+  //   near   = closest distance the camera can "see" (anything closer is invisible)
+  //   far    = farthest distance the camera can "see"
+  const camera = new THREE.PerspectiveCamera(
+    60,                                    // FOV: 60 degrees
+    window.innerWidth / window.innerHeight, // Aspect ratio: match the browser window
+    0.1,                                   // Near plane: 0.1 units
+    1000                                   // Far plane: 1000 units
+  );
+
+  // Position the camera.
+  // Three.js uses a RIGHT-HANDED coordinate system:
+  //   X = right/left
+  //   Y = up/down
+  //   Z = toward/away from you (positive Z comes toward you)
+  //
+  // We place the camera up and back so it looks down at the scene at an angle.
+  camera.position.set(5, 8, 12);
+
+  // Point the camera at the center of the scene (0, 0, 0).
+  camera.lookAt(0, 0, 0);
+
+  // ----- 3. RENDERER -----
+  // The renderer does the actual drawing. WebGLRenderer uses your GPU
+  // to render the scene very fast (60fps typically).
+  const renderer = new THREE.WebGLRenderer({
+    antialias: true,  // Smooth edges instead of jagged pixels
+  });
+
+  // Set the render size to fill the entire window.
+  // The second argument (false) prevents Three.js from changing the CSS size —
+  // we want pixel-perfect rendering at the window's device pixel ratio.
+  renderer.setSize(window.innerWidth, window.innerHeight);
+
+  // Set the pixel ratio to match the display (important for Retina screens).
+  // Without this, the scene would look blurry on high-DPI displays.
+  renderer.setPixelRatio(window.devicePixelRatio);
+
+  // The renderer creates a <canvas> element. We add it to the page.
+  document.body.appendChild(renderer.domElement);
+
+  // ============================================================
+  //  OUR FIRST 3D OBJECT — A SINGLE COLORED BOX
+  // ============================================================
+  //
+  //  Every visible object in Three.js is a "Mesh", which is made of:
+  //    Geometry  = the shape (vertices, faces)
+  //    Material  = the surface appearance (color, texture, shininess)
+  //
+  //  BoxGeometry(width, height, depth) creates a rectangular box.
+  //  MeshBasicMaterial does NOT react to light — it's just a flat color.
+  //  This is exactly what the Opus reference uses: bold, flat, unlit colors.
+
+  const geometry = new THREE.BoxGeometry(2, 3, 2);  // width=2, height=3, depth=2
+
+  const material = new THREE.MeshBasicMaterial({
+    color: '#e63946',   // A bold red
+  });
+
+  // Combine geometry + material into a mesh, then add it to the scene.
+  const box = new THREE.Mesh(geometry, material);
+  scene.add(box);
+
+  // ============================================================
+  //  THE RENDER LOOP (Animation Loop)
+  // ============================================================
+  //
+  //  A static render would just call `renderer.render(scene, camera)` once.
+  //  But we want animation, so we use requestAnimationFrame (rAF).
+  //
+  //  rAF tells the browser: "call this function before the next screen repaint."
+  //  This gives us ~60fps (or whatever the monitor's refresh rate is).
+  //
+  //  Even though nothing moves yet, we set up the loop now because
+  //  every future step will add animation inside it.
+
+  function animate() {
+    // Schedule the next frame FIRST. This ensures the loop continues
+    // even if the rest of the function throws an error.
+    requestAnimationFrame(animate);
+
+    // Draw the scene from the camera's point of view.
+    renderer.render(scene, camera);
+  }
+
+  // Kick off the loop!
+  animate();
+
+</script>
+
+</body>
+</html>
