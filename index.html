@@ -220,6 +220,26 @@
         background: #3a6a89;
       }
 
+      /* Camera toggle button */
+      #btn-camera-toggle {
+        width: 100%;
+        padding: 10px;
+        margin-top: 8px;
+        background: #6b4226;
+        color: #fff;
+        border: none;
+        border-radius: 4px;
+        font:
+          bold 13px/1 "SF Mono",
+          "Fira Code",
+          monospace;
+        cursor: pointer;
+        transition: background 0.2s;
+      }
+      #btn-camera-toggle:hover {
+        background: #5a371f;
+      }
+
       /* Spin All / Stop All button */
       #btn-spin-all {
         width: 100%;
@@ -359,6 +379,7 @@
       <button id="btn-pause">Pause</button>
       <button id="btn-reset-camera">Reset Camera</button>
       <button id="btn-spin-all">Spin All</button>
+      <button id="btn-camera-toggle">Switch to Orthographic</button>
 
       <h3>Controls</h3>
       <div style="color: #777; font-size: 13px; line-height: 1.8">
@@ -393,34 +414,53 @@
       // THREE.Color accepts hex strings, CSS color names, or RGB values.
       scene.background = new THREE.Color("#1a1a1a");
 
-      // ----- 2. CAMERA -----
-      // PerspectiveCamera mimics how human eyes work:
-      //   - Objects farther away appear smaller
-      //   - It has a "field of view" (FOV) angle
+      // ============================================================
+      //  STEP 8 — DUAL CAMERAS: Perspective + Orthographic
+      // ============================================================
       //
-      // Constructor: PerspectiveCamera(fov, aspect, near, far)
-      //   fov    = vertical field of view in degrees (60-75 is natural)
-      //   aspect = width / height of the viewport
-      //   near   = closest distance the camera can "see" (anything closer is invisible)
-      //   far    = farthest distance the camera can "see"
-      const camera = new THREE.PerspectiveCamera(
-        60, // FOV: 60 degrees
-        window.innerWidth / window.innerHeight, // Aspect ratio: match the browser window
-        0.1, // Near plane: 0.1 units
-        1000, // Far plane: 1000 units
+      //  PerspectiveCamera: Objects shrink with distance (like real life).
+      //    Constructor: PerspectiveCamera(fov, aspect, near, far)
+      //
+      //  OrthographicCamera: No perspective — objects stay the same size
+      //    regardless of distance. Gives a flat/isometric look.
+      //    Constructor: OrthographicCamera(left, right, top, bottom, near, far)
+      //    The left/right/top/bottom define a rectangular viewing box.
+      //
+      //  We create BOTH cameras and track which one is active with
+      //  `activeCamera`. Everything else (renderer, raycaster, controls)
+      //  reads from `activeCamera` instead of a fixed `camera` variable.
+
+      // --- Perspective camera (default) ---
+      const perspCamera = new THREE.PerspectiveCamera(
+        60,
+        window.innerWidth / window.innerHeight,
+        0.1,
+        1000,
       );
+      perspCamera.position.set(0, 20, 0);
+      perspCamera.lookAt(0, 0, 0);
 
-      // Position the camera.
-      // Three.js uses a RIGHT-HANDED coordinate system:
-      //   X = right/left
-      //   Y = up/down
-      //   Z = toward/away from you (positive Z comes toward you)
-      //
-      // We place the camera up and back so it looks down at the scene at an angle.
-      camera.position.set(0, 20, 0);
+      // --- Orthographic camera ---
+      // The "frustum size" controls how much of the scene is visible.
+      // We scale it by aspect ratio so the view isn't stretched.
+      const ORTHO_SIZE = 15;
+      const aspect = window.innerWidth / window.innerHeight;
+      const orthoCamera = new THREE.OrthographicCamera(
+        -ORTHO_SIZE * aspect,   // left
+         ORTHO_SIZE * aspect,   // right
+         ORTHO_SIZE,            // top
+        -ORTHO_SIZE,            // bottom
+        0.1,                    // near
+        1000,                   // far
+      );
+      // Start the ortho camera at the same position as the perspective one.
+      orthoCamera.position.set(0, 20, 0);
+      orthoCamera.lookAt(0, 0, 0);
 
-      // Point the camera at the center of the scene (0, 0, 0).
-      camera.lookAt(0, 0, 0);
+      // --- Active camera pointer ---
+      // This is the variable everything else reads from.
+      // Toggling cameras just reassigns this pointer.
+      let activeCamera = perspCamera;
 
       // ----- 3. RENDERER -----
       // The renderer does the actual drawing. WebGLRenderer uses your GPU
@@ -445,51 +485,62 @@
       //  STEP 6 — ORBIT CONTROLS (Right-Click Drag)
       // ============================================================
       //
-      //  OrbitControls is a Three.js "addon" — a pre-built utility that
-      //  handles camera orbiting, panning, and zooming via mouse/touch.
+      //  OrbitControls binds to a specific camera at construction time —
+      //  there's no public API to swap the camera later. So we use a
+      //  FACTORY FUNCTION that creates fresh controls for any camera.
       //
-      //  By default, OrbitControls maps:
-      //    Left click   → orbit (rotate around target)
-      //    Right click  → pan (slide sideways)
-      //    Scroll wheel → zoom (dolly in/out)
-      //
-      //  But we already use left-click for raycasting (clicking blocks).
-      //  So we REMAP the buttons:
-      //    Left click   → nothing (free for our raycaster)
-      //    Right click  → orbit
-      //    Middle click → pan
-      //    Scroll       → zoom (unchanged)
-      //
-      //  THREE.MOUSE is an enum: { LEFT: 0, MIDDLE: 1, RIGHT: 2 }
-      //  The controls read .mouseButtons to decide what each button does.
+      //  When toggling between perspective and orthographic, we:
+      //    1. Save the current target from the old controls
+      //    2. Dispose the old controls (removes all event listeners)
+      //    3. Create new controls bound to the new camera
+      //    4. Restore the target so the view doesn't jump
 
-      const controls = new OrbitControls(camera, renderer.domElement);
+      let controls; // mutable — gets replaced on camera toggle
 
-      // Remap: right-click = orbit, middle = pan, left = disabled
-      controls.mouseButtons = {
-        LEFT: null, // Don't let OrbitControls capture left click
-        MIDDLE: THREE.MOUSE.PAN, // Middle-click drag → pan
-        RIGHT: THREE.MOUSE.ROTATE, // Right-click drag → orbit
-      };
+      function createControls(cam, target) {
+        // If there are existing controls, clean them up first.
+        // dispose() removes all internal event listeners from the canvas.
+        if (controls) controls.dispose();
 
-      // The "target" is the point the camera orbits around and looks at.
-      // We set it to the origin (center of our grid).
-      controls.target.set(0, 0, 0);
+        const ctrl = new OrbitControls(cam, renderer.domElement);
 
-      // Enable damping (inertia) — the camera continues to drift slightly
-      // after you release the mouse, which feels much smoother.
-      // When enabled, you MUST call controls.update() in the animation loop.
-      controls.enableDamping = true;
-      controls.dampingFactor = 0.08;
+        // Remap: right-click = orbit, middle = pan, left = disabled
+        ctrl.mouseButtons = {
+          LEFT: null,
+          MIDDLE: THREE.MOUSE.PAN,
+          RIGHT: THREE.MOUSE.ROTATE,
+        };
 
-      // Limit how far the camera can zoom in/out, and how far it can tilt.
-      // This prevents the user from zooming through the floor or flipping upside down.
-      controls.minDistance = 5; // Can't zoom closer than 5 units
-      controls.maxDistance = 60; // Can't zoom farther than 60 units
-      controls.maxPolarAngle = Math.PI / 2.1; // Can't go below the ground plane
+        // Restore (or set) the orbit target
+        if (target) {
+          ctrl.target.copy(target);
+        } else {
+          ctrl.target.set(0, 0, 0);
+        }
+
+        ctrl.enableDamping = true;
+        ctrl.dampingFactor = 0.08;
+
+        // Distance limits work differently per camera type:
+        //   Perspective:  minDistance / maxDistance (camera-to-target distance)
+        //   Orthographic: minZoom / maxZoom (zoom factor, where 1 = default)
+        if (cam.isPerspectiveCamera) {
+          ctrl.minDistance = 5;
+          ctrl.maxDistance = 60;
+        } else {
+          ctrl.minZoom = 0.3;
+          ctrl.maxZoom = 4;
+        }
+
+        ctrl.maxPolarAngle = Math.PI / 2.1;
+
+        return ctrl;
+      }
+
+      // Create the initial controls for the perspective camera
+      controls = createControls(activeCamera);
 
       // Suppress the browser's right-click context menu on the canvas.
-      // Without this, right-click drag would pop open "Copy / Paste / Inspect".
       renderer.domElement.addEventListener("contextmenu", (e) =>
         e.preventDefault(),
       );
@@ -768,7 +819,7 @@
         // --- Cast the ray ---
         // setFromCamera() creates a ray starting at the camera, passing through
         // the pointer's NDC position. It handles all the matrix math internally.
-        raycaster.setFromCamera(pointer, camera);
+        raycaster.setFromCamera(pointer, activeCamera);
 
         // --- Check for intersections ---
         // intersectObjects() tests the ray against an array of objects.
@@ -829,7 +880,7 @@
         controls.update();
 
         // Always render (even when paused) so the scene is visible
-        renderer.render(scene, camera);
+        renderer.render(scene, activeCamera);
       }
 
       // Kick off the loop!
@@ -839,21 +890,30 @@
       //  STEP 5 — WINDOW RESIZE HANDLING
       // ============================================================
       //
-      //  When the browser window is resized, we must update TWO things:
-      //    1. The renderer's pixel dimensions
-      //    2. The camera's aspect ratio
+      //  When the browser window is resized, we must update the renderer
+      //  AND whichever camera is active. The two camera types need
+      //  different updates:
       //
-      //  Without this, the scene would stretch or crop incorrectly.
-      //  We also call camera.updateProjectionMatrix() — this recalculates
-      //  the internal math that converts 3D → 2D based on the new aspect ratio.
+      //  Perspective:   update .aspect, then updateProjectionMatrix()
+      //  Orthographic:  recalculate left/right/top/bottom from new
+      //                 window size, then updateProjectionMatrix()
 
       window.addEventListener("resize", () => {
         const w = window.innerWidth;
         const h = window.innerHeight;
+        const newAspect = w / h;
 
         renderer.setSize(w, h);
-        camera.aspect = w / h;
-        camera.updateProjectionMatrix();
+
+        // Always update BOTH cameras so switching mid-resize works correctly
+        perspCamera.aspect = newAspect;
+        perspCamera.updateProjectionMatrix();
+
+        orthoCamera.left   = -ORTHO_SIZE * newAspect;
+        orthoCamera.right  =  ORTHO_SIZE * newAspect;
+        orthoCamera.top    =  ORTHO_SIZE;
+        orthoCamera.bottom = -ORTHO_SIZE;
+        orthoCamera.updateProjectionMatrix();
       });
 
       // ============================================================
@@ -951,8 +1011,8 @@
             INITIAL_TARGET.z,
           );
 
-          // Reset the camera position
-          camera.position.set(
+          // Reset the active camera's position
+          activeCamera.position.set(
             INITIAL_CAMERA_POS.x,
             INITIAL_CAMERA_POS.y,
             INITIAL_CAMERA_POS.z,
@@ -981,6 +1041,46 @@
         }
 
         btnSpinAll.textContent = allSpinning ? "Stop All" : "Spin All";
+      });
+
+      // ============================================================
+      //  STEP 8 — CAMERA TOGGLE WIRING
+      // ============================================================
+      //
+      //  Toggling cameras requires three things:
+      //    1. Copy position + target from the old camera to the new one
+      //       so the view doesn't jump
+      //    2. Swap activeCamera to point at the other camera
+      //    3. Recreate OrbitControls for the new camera (because
+      //       OrbitControls binds to a camera at construction)
+
+      const btnCameraToggle = document.getElementById("btn-camera-toggle");
+
+      btnCameraToggle.addEventListener("click", () => {
+        // Determine which camera we're switching TO
+        const isCurrentlyPerspective = activeCamera === perspCamera;
+        const newCamera = isCurrentlyPerspective ? orthoCamera : perspCamera;
+
+        // --- Sync position and rotation ---
+        // Copy the current camera's position so the new camera starts
+        // from the same viewpoint. Without this, the view would jump
+        // to wherever the other camera was last left.
+        newCamera.position.copy(activeCamera.position);
+
+        // Save the orbit target before we dispose the old controls
+        const currentTarget = controls.target.clone();
+
+        // --- Swap the active camera ---
+        activeCamera = newCamera;
+
+        // --- Recreate OrbitControls for the new camera ---
+        // Pass the saved target so orbiting continues around the same point
+        controls = createControls(activeCamera, currentTarget);
+
+        // Update button label
+        btnCameraToggle.textContent = isCurrentlyPerspective
+          ? "Switch to Perspective"
+          : "Switch to Orthographic";
       });
 
       // ============================================================
