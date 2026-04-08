@@ -220,6 +220,26 @@
         background: #3a6a89;
       }
 
+      /* Spin All / Stop All button */
+      #btn-spin-all {
+        width: 100%;
+        padding: 10px;
+        margin-top: 8px;
+        background: #2a9d8f;
+        color: #fff;
+        border: none;
+        border-radius: 4px;
+        font:
+          bold 13px/1 "SF Mono",
+          "Fira Code",
+          monospace;
+        cursor: pointer;
+        transition: background 0.2s;
+      }
+      #btn-spin-all:hover {
+        background: #238276;
+      }
+
       /* Color swatches preview */
       .palette-preview {
         display: flex;
@@ -338,6 +358,7 @@
       <button id="btn-regenerate">Regenerate</button>
       <button id="btn-pause">Pause</button>
       <button id="btn-reset-camera">Reset Camera</button>
+      <button id="btn-spin-all">Spin All</button>
 
       <h3>Controls</h3>
       <div style="color: #777; font-size: 13px; line-height: 1.8;">
@@ -929,6 +950,26 @@
         // Force OrbitControls to recalculate its internal state
         // so the next frame picks up the new position smoothly.
         controls.update();
+      });
+
+      // --- Spin All / Stop All button ---
+      // Toggles every block's spinning state at once.
+      // Tracks whether "all" are currently spinning so it knows which
+      // action to take and which label to show.
+      const btnSpinAll = document.getElementById("btn-spin-all");
+      let allSpinning = false;
+
+      btnSpinAll.addEventListener("click", () => {
+        allSpinning = !allSpinning;
+
+        if (blocksGroup) {
+          blocksGroup.children.forEach((mesh) => {
+            mesh.userData.spinning = allSpinning;
+            mesh.userData.spinSpeed = CONFIG.rotationSpeed;
+          });
+        }
+
+        btnSpinAll.textContent = allSpinning ? "Stop All" : "Spin All";
       });
 
       // ============================================================
