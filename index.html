@@ -200,6 +200,26 @@
         background: #1d3640;
       }
 
+      /* Reset camera button */
+      #btn-reset-camera {
+        width: 100%;
+        padding: 10px;
+        margin-top: 8px;
+        background: #457b9d;
+        color: #fff;
+        border: none;
+        border-radius: 4px;
+        font:
+          bold 13px/1 "SF Mono",
+          "Fira Code",
+          monospace;
+        cursor: pointer;
+        transition: background 0.2s;
+      }
+      #btn-reset-camera:hover {
+        background: #3a6a89;
+      }
+
       /* Color swatches preview */
       .palette-preview {
         display: flex;
@@ -317,6 +337,15 @@
 
       <button id="btn-regenerate">Regenerate</button>
       <button id="btn-pause">Pause</button>
+      <button id="btn-reset-camera">Reset Camera</button>
+
+      <h3>Controls</h3>
+      <div style="color: #777; font-size: 13px; line-height: 1.8;">
+        <strong style="color: #aaa;">Left click</strong> — spin a block<br />
+        <strong style="color: #aaa;">Right click + drag</strong> — orbit camera<br />
+        <strong style="color: #aaa;">Middle click + drag</strong> — pan camera<br />
+        <strong style="color: #aaa;">Scroll wheel</strong> — zoom in/out
+      </div>
     </div>
 
     <script type="module">
@@ -876,6 +905,25 @@
       btnPause.addEventListener("click", () => {
         paused = !paused;
         btnPause.textContent = paused ? "Resume" : "Pause";
+      });
+
+      // --- Reset Camera button ---
+      // Smoothly returns the camera to its initial position and resets the
+      // orbit target to the origin. We store the initial values as constants
+      // so the reset always goes back to the same place.
+      const INITIAL_CAMERA_POS = { x: 8, y: 12, z: 18 };
+      const INITIAL_TARGET     = { x: 0, y: 0,  z: 0 };
+
+      document.getElementById("btn-reset-camera").addEventListener("click", () => {
+        // Reset the orbit target (the point the camera looks at)
+        controls.target.set(INITIAL_TARGET.x, INITIAL_TARGET.y, INITIAL_TARGET.z);
+
+        // Reset the camera position
+        camera.position.set(INITIAL_CAMERA_POS.x, INITIAL_CAMERA_POS.y, INITIAL_CAMERA_POS.z);
+
+        // Force OrbitControls to recalculate its internal state
+        // so the next frame picks up the new position smoothly.
+        controls.update();
       });
 
       // ============================================================
